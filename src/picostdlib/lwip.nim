@@ -2,6 +2,13 @@
 # http server
 # this is kind of limited and opinionated
 
+#[
+
+# This works for a minimum example, but abandoned out- it's here
+# only in case someone actually finds a use case for this
+# very old-school opinionated server (get requests and CGI/SSI only)
+# and wants to flesh this out a bit
+
 type
   # workaround https://github.com/nim-lang/Nim/issues/19588
   CConstCharImpl {.importc:"const char*".} = cstring
@@ -18,9 +25,14 @@ type
 proc setHandlers*(handlers: ptr Handler; numHandlers: cint) {.importc: "http_set_cgi_handlers".}
 {.pop.}
 
-# blocking tcp server
-# this needs rtos
+]#
 
+# blocking tcp server
+#
+# this needs rtos and was abandoned in favor of the tcp server
+# based approach below
+
+#[
 const
   NETCONN_TCP* = 0
   NETCONN_COPY* = 0
@@ -42,12 +54,33 @@ proc close*(conn: ptr Netconn): cint {.importc: "netconn_close".}
 proc delete*(conn: ptr Netconn): cint {.importc: "netconn_delete".}
 proc delete*(buf: ptr Netbuf) {.importc: "netbuf_delete".}
 {.pop.}
+]#
 
-# raw tcp server- if in doubt, use this
+
+
+# raw tcp server- this is the good stuff. flexible and no rtos needed.
 
 type
+  IpAddress* {.importc: "ip_addr_t", header: "lwip/ip_addr.h".} = object
+    address* {.importc: "addr".}: cuint
+
   Tcp* {.importc: "struct tcp_pcb", header: "lwip/tcp.h".} = object
+    localIp* {.importc: "local_ip".}: IpAddress
+    remoteIp* {.importc: "remote_ip".}: IpAddress
+    localPort* {.importc: "local_port".}: cushort
+    remotePort* {.importc: "remote_port".}: cushort
+    flags* {.importc: "flags".}: cuchar
+
   Pbuf* {.importc: "struct pbuf", header: "lwip/pbuf.h".} = object
+    next* {.importc: "next".}: ptr Pbuf
+    payload* {.importc: "payload".}: pointer
+    totalLength* {.importc: "tot_len".}: cushort
+    length* {.importc: "len".}: cushort
+    #pbufType* {.importc: "type".}: cuchar
+    #flags* {.importc: "flags".}: cuchar
+    #refCount* {.importc: "ref".}: cushort
+    #ifIdx* {.importc: "if_idx".}: cuchar
+
   IpAddr* {.importc: "ip_addr_t", header: "lwip/ip_addr.h".} = object
 
 proc initTcp*(): ptr Tcp {.importc: "tcp_new", header: "lwip/tcp.h".}
@@ -61,6 +94,14 @@ proc output*(conn: ptr Tcp): cint {.importc: "tcp_output", header: "lwip/tcp.h".
 proc close*(conn: ptr Tcp): cint {.importc: "tcp_close", header: "lwip/tcp.h".}
 #proc receive*(conn: ptr Tcp, receive: proc(arg: pointer, conn: ptr Tcp, p: ptr Pbuf, err: cint): cint {.cdecl.}) {.importc: "tcp_recv", header: "lwip/tcp.h".}
 proc receive*(conn: ptr Tcp, receive: pointer) {.importc: "tcp_recv", header: "lwip/tcp.h".}
+proc received*(conn: ptr Tcp, len: cushort) {.importc: "tcp_recved", header: "lwip/tcp.h".}
+proc arg*(conn: ptr Tcp, arg: pointer) {.importc: "tcp_arg", header: "lwip/tcp.h".}
 
-proc free*(p: ptr Pbuf) {.importc, header: "lwip/pbuf.h".}
+proc free*(p: ptr Pbuf) {.importc: "pbuf_free", header: "lwip/pbuf.h".}
+proc sent*(conn: ptr Tcp, sent: pointer) {.importc: "tcp_sent", header: "lwip/tcp.h".}
+
+proc cyw43_arch_lwip_begin() {.importc: "cyw43_arch_lwip_begin".}
+proc cyw43_arch_lwip_end() {.importc: "cyw43_arch_lwip_end".}
+
+
 
